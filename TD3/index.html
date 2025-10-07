@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Babylon.js - AR Géolocalisée (Correction Finale)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <style>
+        html, body { overflow: hidden; width: 100%; height: 100%; margin: 0; padding: 0; }
+        #renderCanvas { width: 100%; height: 100%; touch-action: none; }
+        #info { position: absolute; bottom: 10px; left: 10px; color: white; background-color: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; font-family: sans-serif; font-size: 14px; }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+</head>
+<body>
+    <div id="info">Initialisation...</div>
+    <canvas id="renderCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('renderCanvas');
+        const engine = new BABYLON.Engine(canvas, true);
+        const infoDiv = document.getElementById('info');
+
+        // --- Paramètres de la scène ---
+        const distance = 10;
+        const cubeSize = 1;
+        const smoothingFactor = 0.05;
+
+        // Variables pour le lissage de l'orientation
+        let targetAngleY = 0;
+        let smoothedAngleY = 0;
+
+        const createScene = () => {
+            const scene = new BABYLON.Scene(engine);
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            const camera = new BABYLON.FreeCamera("camera", new BABYLON.Vector3(0, 0, 0), scene);
+            
+            // Placement fixe des cubes
+            const cubeNorth = BABYLON.MeshBuilder.CreateBox("Nord", { size: cubeSize }, scene);
+            cubeNorth.position = new BABYLON.Vector3(0, 0, distance);
+            cubeNorth.material = new BABYLON.StandardMaterial("matN", scene);
+            cubeNorth.material.emissiveColor = BABYLON.Color3.Red();
+
+            const cubeEast = BABYLON.MeshBuilder.CreateBox("Est", { size: cubeSize }, scene);
+            cubeEast.position = new BABYLON.Vector3(distance, 0, 0);
+            cubeEast.material = new BABYLON.StandardMaterial("matE", scene);
+            cubeEast.material.emissiveColor = BABYLON.Color3.Green();
+
+            const cubeSouth = BABYLON.MeshBuilder.CreateBox("Sud", { size: cubeSize }, scene);
+            cubeSouth.position = new BABYLON.Vector3(0, 0, -distance);
+            cubeSouth.material = new BABYLON.StandardMaterial("matS", scene);
+            cubeSouth.material.emissiveColor = BABYLON.Color3.Blue();
+
+            const cubeWest = BABYLON.MeshBuilder.CreateBox("Ouest", { size: cubeSize }, scene);
+            cubeWest.position = new BABYLON.Vector3(-distance, 0, 0);
+            cubeWest.material = new BABYLON.StandardMaterial("matW", scene);
+            cubeWest.material.emissiveColor = BABYLON.Color3.Yellow();
+
+            setupARBackground(scene);
+            setupOrientationListener(); 
+
+            return scene;
+        };
+
+        const setupARBackground = (scene) => {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(stream => {
+                    const video = document.createElement('video');
+                    video.setAttribute('playsinline', '');
+                    video.setAttribute('autoplay', '');
+                    video.srcObject = stream;
+                    video.play();
+                    
+                    const background = new BABYLON.Layer("background", null, scene, true);
+                    background.texture = new BABYLON.VideoTexture("video", video, scene, true);
+                }).catch(err => {
+                    infoDiv.innerHTML = "<strong>Erreur:</strong> Caméra inaccessible. Assurez-vous d'utiliser <strong>HTTPS</strong>.";
+                });
+        };
+
+        const setupOrientationListener = () => {
+            window.addEventListener("deviceorientationabsolute", (event) => {
+                if (event.alpha !== null) {
+                    // --- CORRECTION FINALE AVEC L'API MODERNE ---
+                    // screen.orientation.angle donne 0°, 90°, 180°, 270°
+                    const screenAngle = screen.orientation.angle || 0;
+                    
+                    // On soustrait l'angle de l'écran pour obtenir le vrai cap
+                    const compensatedAlpha = event.alpha - screenAngle;
+
+                    targetAngleY = -compensatedAlpha;
+                    infoDiv.textContent = `Cap: ${(compensatedAlpha % 360).toFixed(1)}°`;
+                }
+            }, true);
+        };
+
+        const scene = createScene();
+        
+        engine.runRenderLoop(() => {
+            let delta = targetAngleY - smoothedAngleY;
+            // Gère le passage de 360° à 0°
+            if (Math.abs(delta) > 180) {
+                delta -= Math.sign(delta) * 360;
+            }
+            
+            smoothedAngleY += delta * smoothingFactor;
+            
+            scene.activeCamera.rotation.y = BABYLON.Tools.ToRadians(smoothedAngleY);
+            
+            scene.render();
+        });
+
+        window.addEventListener('resize', () => {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>
